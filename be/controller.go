@@ -57,13 +57,31 @@ func (ctr *UserController) LoginController(c *gin.Context) {
 		return
 	}
 	defer siamUser.Logout() // opsional logout
-	// end of scraping
 
-	// berhasil login:
 	user := db.User{
 		NIM: loginReq.NIM,
 		Password: loginReq.Password,
 	}
+
+	// jadi shorthand, untuk scrape data mahasiswa
+	scrapeDataMahasiswa := func() error{
+		if err := siamUser.GetData(); err != nil {
+			return err
+		}
+
+		user.Nama = siamUser.Data.Nama
+		user.Jenjang = siamUser.Data.Jenjang
+		user.Fakultas = siamUser.Data.Fakultas
+		user.Jurusan = siamUser.Data.Jurusan
+		user.ProgramStudi = siamUser.Data.ProgramStudi
+		user.Seleksi = siamUser.Data.Seleksi
+		user.NomorUjian = siamUser.Data.NomorUjian
+		user.FotoProfil = siamUser.Data.FotoProfil
+		return nil
+	}
+
+	// end of scraping
+
 	// cari nim
 	newAccount := false
 	err = ctr.sql.WithContext(c.Request.Context()).Where("nim = ?", user.NIM).First(&user).Error
@@ -71,6 +89,11 @@ func (ctr *UserController) LoginController(c *gin.Context) {
 	if err == gorm.ErrRecordNotFound {
 		newAccount = true
 		user.CreatedAt = time.Now()
+		if err := scrapeDataMahasiswa(); err != nil {
+			// TODO: tidy log
+			log.Println(err)
+			log.Println("[error] database error, gagal scrape data mahasiswa")
+		}
 		err = ctr.sql.WithContext(c.Request.Context()).Create(&user).Error
 	}
 	if err != nil{
@@ -83,6 +106,11 @@ func (ctr *UserController) LoginController(c *gin.Context) {
 	if !newAccount {
 		user.Password = loginReq.Password
 		user.UpdatedAt = time.Now()
+		if err := scrapeDataMahasiswa(); err != nil {
+			// TODO: tidy log
+			log.Println(err)
+			log.Println("[error] database error, gagal scrape data mahasiswa")
+		}
 		if err = ctr.sql.WithContext(c.Request.Context()).Save(&user).Error; err != nil{
 			log.Println(err)
 			log.Println("[error] database error, gagal update data siam account.")
